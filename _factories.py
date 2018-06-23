@@ -1,11 +1,12 @@
 
+import pymel.core as pmc
 
 
 def getDgDataType(data):
     ''' Determines the type of the input data.'''
 
     from general import DgData, ArrayData
-    from datatypes import Number, Vector, Matrix, Quaternion
+    from datatypes import Float, Vector, Matrix, Quaternion
 
     if isinstance(data, DgData):
         return type(data)
@@ -87,5 +88,43 @@ def getDgDataType(data):
     raise TypeError('Could not determine dataType for %s' % str(data))
 
 
-def getFunction(operation, data):
+def sortByDataType(data):
+    '''
+    Functions that involve multiple types require data in a specific order.
+    This will sort the inputted values to match a standardized order.
+    '''
+    from general import DgData
+
+    data = data if isinstance(data, list) or isinstance(data, tuple) else [data]
+
+    if isinstance(data[0], basestring):
+        return sorted(data)
+    elif isinstance(data[0], DgData):
+        return sorted(data, key=lambda i: i.type())
+    else:
+        raise TypeError('Cannot determine order for input type "%s"' % type(data[0]))
+
+def listFunctions(dataType):
     import functions
+    from general import DgData
+
+    for function, types in functions.__functions__.iteritems():
+        if isinstance(type, DgData):
+
+def getFunction(operation, dataType):
+    import functions
+    from general import DgData
+
+    if operation not in functions.__functions__:
+        raise ValueError('Operations "%s" not found.' % operation)
+
+    value = functions.__functions__[operation]
+    if not isinstance(operation, dict):
+        return value
+
+    if dataType not in value:
+        raise TypeError('%s does not support input dataType "%s".' % (operation, dataType))
+
+    value = value[dataType]
+
+    return value

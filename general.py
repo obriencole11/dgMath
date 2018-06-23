@@ -26,6 +26,10 @@ class DgData(object):
     _maxInputs = None
     _defaultInputs = None
 
+    @classmethod
+    def type(cls):
+        return cls._type
+
     def __new__(cls, *args, **kwargs):
         '''
         We override __new__ in order to return the correct object type.
@@ -39,7 +43,7 @@ class DgData(object):
                 raise ValueError('%s requires one input argument.' % cls.__name__)
 
             data = args[0]
-            type = getType(data)
+            type = _factories.getDgDataType(data)
 
             return type.__new__(type, data, *args, **kwargs)
 
@@ -84,20 +88,21 @@ class DgData(object):
     def __str__(self):
         return self.name()
 
+    def __getattr__(self, item):
+        if item in _factories.listFunctions(self.type()):
+            pass
+
     def __mul__(self, other):
-        return self._wrapWithInput(getFunction('multiply', self.type()))
+        return self._wrapWithInput(_factories.getFunction('multiply', self.type()))
 
     def __div__(self, other):
-        return self._wrapWithInput(getFunction('divide', self.type()))
+        return self._wrapWithInput(_factories.getFunction('divide', self.type()))
 
     def __add__(self, other):
-        return self._wrapWithInput(getFunction('add', self.type()))
+        return self._wrapWithInput(_factories.getFunction('add', self.type()))
 
     def __sub__(self, other):
-        return self._wrapWithInput(getFunction('subtract', self.type()))
-
-    def type(self):
-        return self._type
+        return self._wrapWithInput(_factories.getFunction('subtract', self.type()))
 
     def data(self):
         return self._data
@@ -144,7 +149,7 @@ class DgData(object):
         pass
 
     def _assertSameType(self, other):
-        other_type = getType(other)
+        other_type = _factories.getDgDataType(other)
         if other_type == type(self):
             return True
         else:

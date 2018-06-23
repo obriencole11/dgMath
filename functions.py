@@ -2,10 +2,25 @@
 
 This module contains all functions for easy importing.
 
+Challenges:
+- How do we determine what operation to use on what type
+- How do we handle the order of input types
+
+
 '''
 
 from general import *
+import _factories
 
+__functions__ = {
+    'multiply': {
+        'float': MultiplyFloat,
+        'vector': Dot,
+        ('float', 'vector'): MultiplyFloatVector
+    },
+    'cross': Cross,
+    'dot': Dot
+}
 
 #### OPERATIONS ####
 
@@ -13,6 +28,11 @@ class Multiply(object):
     def __new__(cls, *args):
         return DgData(args[0]) * DgData(args[1])
 
+class MultiplyFloat(object):
+    pass
+
+class MultiplyFloatVector(object):
+    pass
 
 #### GENERAL ####
 

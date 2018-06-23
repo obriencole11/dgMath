@@ -1,3 +1,5 @@
+from general import DgTypedData, ArrayData
+import _factories
 
 class Float(DgTypedData):
     _type = 'float'
@@ -10,6 +12,9 @@ class Matrix(ArrayData):
 class Vector(ArrayData):
     _type = 'vector'
     _defaultInputs = [[0,0,0]]
+
+    def cross(self, other):
+        return self._wrapWithInput(_factories.getFunction('cross'))
 
 class Quaternion(ArrayData):
     _type = 'quaternion'
