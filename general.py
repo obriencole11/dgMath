@@ -18,17 +18,23 @@ Challenges
 
 '''
 
+from functools import partial
+
 import pymel.core as pmc
 import _factories
 
 class DgData(object):
     _type = None
-    _maxInputs = None
-    _defaultInputs = None
+    _isArray = False
+    _isConstant = False
 
     @classmethod
     def type(cls):
         return cls._type
+
+    @classmethod
+    def isArray(cls):
+        return cls._isArray
 
     def __new__(cls, *args, **kwargs):
         '''
@@ -48,67 +54,53 @@ class DgData(object):
             return type.__new__(type, data, *args, **kwargs)
 
         else:
-            return object.__new__(cls, *args, **kwargs)
+            return object.__new__(cls)
 
-    def __init__(self, *inputs, **settings):
+    def __init__(self, *args, **kwargs):
 
-        # Enforce max inputs
-        if self._maxInputs and len(inputs) > self._maxInputs:
-            raise ValueError('Input limit reached, %s accepts at most %s inputs.' % (self.__name__, self._maxInputs))
+        # Assign the name if one is provided
+        if 'name' in kwargs:
+            self._name = kwargs.pop('name')
+        elif 'n' in kwargs:
+            self._name = kwargs.pop('n')
+        else:
+            self._name = type(self).__name__ or self.type()
 
-        # Add default inputs if any inputs were omitted
-        if self._defaultInputs != None:
-            new_inputs = []
-            defaultInputs = self._defaultInputs if isinstance(self._defaultInputs, list) else [self._defaultInputs]
-            for i, input in enumerate(defaultInputs):
-                if len(inputs) <= i:
-                    new_inputs.append(input)
-                else:
-                    new_inputs.append(inputs[i])
-            inputs = new_inputs
+        # Grab constant state if provided
+        if 'constant' in kwargs:
+            self._isConstant = True
+            kwargs.pop('constant')
 
-        # Convert any strings to PyNodes
-        inputs = [pmc.PyNode(input) if isinstance(input, basestring) else input for input in inputs ]
+        _data = self.create(*args, **kwargs)
 
-        self._data = self.create(*inputs, **settings)
+        if isinstance(_data, DgData):
+            _data = _data.data()
 
-    def create(self, *inputs, **settings):
-        ''' 
-        This is where we determine the 'data' for the class.
-        The arguments here will be DgData instances inputted on init.
-        The return should be the resulting data.
-        
-        For basic classes, this will just pass the inputs.
-        For things like functions and constants, nodes will be created here.
-        
-        Here it is important that the arguments are the inputs, the kwargs are the settings.
-        '''
-        return inputs[0]
+        self.addAttribute('output', _data)
+
+        self._data = _data
+
+    def create(self, *args, **kwargs):
+
+        if self.isConstant():
+            return self.createConstant()
+        else:
+            return args[0]
+
+    def createConstant(self):
+        raise NotImplementedError('%s does not support constant creation.' % type(self).__name__)
 
     def __str__(self):
         return self.name()
 
-    def __getattr__(self, item):
-        if item in _factories.listFunctions(self.type()):
-            pass
-
-    def __mul__(self, other):
-        return self._wrapWithInput(_factories.getFunction('multiply', self.type()))
-
-    def __div__(self, other):
-        return self._wrapWithInput(_factories.getFunction('divide', self.type()))
-
-    def __add__(self, other):
-        return self._wrapWithInput(_factories.getFunction('add', self.type()))
-
-    def __sub__(self, other):
-        return self._wrapWithInput(_factories.getFunction('subtract', self.type()))
+    def isConstant(self):
+        return self._isConstant
 
     def data(self):
         return self._data
 
     def name(self):
-        return type(self).__name__
+        return self._name
 
     def isAttr(self):
         return isinstance(self.data(), pmc.general.Attribute)
@@ -126,74 +118,69 @@ class DgData(object):
     def connect(self, other):
         ''' This provides the ability to easily connect with other attributes. '''
 
-        self._assertSameType(other)
+        _factories.addConnection(self.data(), other)
 
-        if isinstance(other, DgData) and other.isAttr():
-            other = other.data()
-        elif isinstance(other, pmc.general.Attribute):
-            pass
-        elif isinstance(other, basestring):
-            other = pmc.PyNode(other)
-        else:
-            raise ValueError('Connection must be to an attribute.')
+    def addAttribute(self, name, attributes, input=None):
+        self.__dict__[name] = attributes
 
-        if self.isAttr():
-            self.data().connect(other)
-        else:
-            other.set(self.data())
+        attributes = attributes if isinstance(attributes, list) else [attributes]
 
-    def addAttribute(self, name, attribute):
-        self.__dict__[name] = attribute
+        for attribute in attributes:
+            if input != None:
+                self.connectInput(input, attribute)
 
-    def createNode(self, *args, **kwargs):
-        pass
+    def connectInput(self, source, destination):
+        '''
+        
+        :param source: Some type of data to connect to the destination.
+        :param destination: A PyNode destination attribute.
+        :return: 
+        '''
+
+        if source == None:
+            return None
+
+        _factories.addConnection(source, destination)
+
+
+    def createNode(self, type, **kwargs):
+        node = pmc.createNode(type, **kwargs)
+        name = '%s_%s' % (self.name(), type)
+        node.rename(name)
+        return node
 
     def _assertSameType(self, other):
         other_type = _factories.getDgDataType(other)
-        if other_type == type(self):
+        if isinstance(self, other_type):
             return True
         else:
             raise TypeError('%s is incompatable with %s' % (str(other), self.name()))
 
     def _wrapWithInput(self, function):
+        ''' This wraps the input function '''
         def wrapped_function(*args, **kwargs):
             return function(self, *args, **kwargs)
         return wrapped_function
 
 
-# Todo should this be removed?
-class DgTypedData(DgData):
-    ''' An intermediate type that removes DgData's input filtering. '''
-    def __new__(cls, *args, **kwargs):
-        return object.__new__(cls, *args, **kwargs)
-
-
-class ArrayData(DgTypedData):
-
-    def get(self):
-        pass
-
-    def set(self, value):
-        self._assertSameType(value)
-        if self.isAttr():
-            for i, child in enumerate(self.getChildren()):
-                child_data = DgData(child)
-                child_data.set(value[i])
-                self._data[i] = child_data
-        else:
-            self._data = value
-
-    def getChildren(self):
-        pass
-
-    def connect(self, other):
-        pass
+class DgArray(DgData):
+    _isArray = True
 
     def __getitem__(self, item):
-        pass
+        if self.isAttr():
+            return self.data().getChildren()[item]
+        else:
+            return self.data()[item]
 
     def __len__(self):
-        pass
+        if self.isAttr():
+            return self.data().numChildren()
+        else:
+            return len(self.data())
 
 
+class Constant(object):
 
+    def __new__(cls, *args, **kwargs):
+        kwargs['constant'] = True
+        return DgData(*args, **kwargs)
